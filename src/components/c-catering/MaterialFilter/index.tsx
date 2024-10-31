@@ -68,6 +68,7 @@ const MaterialFilter = ({
         w={{ base: "100%", sm: "20vw" }}
         data={materialNames}
         defaultValue={keyword}
+        value={keyword}
         onReload={onReload}
       />
       {onChangeOrderCycles && (

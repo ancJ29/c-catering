@@ -1,4 +1,3 @@
-import NumberInput from "@/components/common/NumberInput";
 import { Material } from "@/services/domain";
 import { DataGridColumnProps } from "@/types";
 import { numberWithDelimiter } from "@/utils";
@@ -10,11 +9,11 @@ import {
   TextInput,
 } from "@mantine/core";
 import store from "./_inventory.store";
+import NumberInput from "./components/NumberInput";
 
 export const configs = (
   t: (key: string) => string,
-  isAuditedAllItems: boolean,
-  onAuditedAllItems: (checked: boolean) => void,
+  isSelectAll: boolean,
 ): DataGridColumnProps[] => {
   return [
     {
@@ -52,6 +51,7 @@ export const configs = (
         return numberWithDelimiter(
           store.getAmountShippedAfterAudit(row.id),
         );
+        return 0;
       },
     },
     {
@@ -82,12 +82,13 @@ export const configs = (
       renderCell: (_, row: Material) => {
         return (
           <NumberInput
-            // key={row.id}
-            isPositive={true}
-            defaultValue={store.getAmount(row.id)}
-            onChange={(value) => store.setAmount(row.id, value)}
+            key={row.id}
+            value={store.getAmount(row.id)}
+            onChangeValue={(value) =>
+              store.setAmount(row.id, parseFloat(value.toString()))
+            }
             allowDecimal={row?.others.unit?.allowFloat || false}
-            isInteger={!row?.others.unit?.allowFloat}
+            allowNegative={false}
             style={{ paddingLeft: "2rem" }}
           />
         );
@@ -112,6 +113,7 @@ export const configs = (
       renderCell: (_, row: Material) => {
         return (
           <TextInput
+            key={row.id}
             defaultValue={store.getMemo(row.id)}
             onChange={(e) => store.setMemo(row.id, e.target.value)}
             style={{ paddingLeft: "1rem" }}
@@ -125,11 +127,11 @@ export const configs = (
         <Stack gap={5} align="center">
           <Text fw="bold">{t("Checked")}</Text>
           <Checkbox
-            defaultChecked={isAuditedAllItems}
+            checked={isSelectAll}
             color="white"
             iconColor="primary"
             onChange={(value) =>
-              onAuditedAllItems(value.target.checked)
+              store.setIsSelectAll(value.target.checked)
             }
           />
         </Stack>
@@ -142,9 +144,9 @@ export const configs = (
           <Center w="full">
             <Checkbox
               key={row.id}
-              defaultChecked={store.getIsAudited(row.id)}
+              defaultChecked={store.getIsSelect(row.id)}
               onChange={(value) =>
-                store.setIsAudited(row.id, value.target.checked)
+                store.setIsSelect(row.id, value.target.checked)
               }
             />
           </Center>
@@ -180,10 +182,10 @@ export function filter(m: Material, condition?: FilterType) {
     return false;
   }
   if (condition?.checkType === CheckType.CHECKED) {
-    return store.getIsAudited(m.id);
+    return store.getIsSelect(m.id);
   }
   if (condition?.checkType === CheckType.NOT_CHECKED) {
-    return !store.getIsAudited(m.id);
+    return !store.getIsSelect(m.id);
   }
   return true;
 }

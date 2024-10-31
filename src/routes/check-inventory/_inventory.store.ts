@@ -1,6 +1,7 @@
 import {
   getAllInventories,
   Inventory,
+  Material,
   updateInventory,
 } from "@/services/domain";
 import useMaterialStore from "@/stores/material.store";
@@ -11,12 +12,12 @@ import {
 } from "@/utils";
 
 type State = {
-  updated: boolean;
-  cateringId?: string;
   currents: Record<string, Inventory>;
-  updates: Record<string, Inventory>;
+  amounts: Record<string, number>;
+  updated: boolean;
+  cateringId: string | null;
   key: number;
-  isAuditedAllItems: boolean;
+  isSelectAll: boolean;
   selectedItemsCount: number;
 };
 
@@ -24,27 +25,28 @@ enum ActionType {
   RESET = "RESET",
   SET_INVENTORY = "SET_INVENTORY",
   SET_AMOUNT = "SET_AMOUNT",
-  SET_IS_AUDITED = "SET_IS_AUDITED",
+  SET_IS_SELECTED = "SET_IS_SELECTED",
   SET_MEMO = "SET_MEMO",
-  SET_AUDITED_ALL_ITEMS = "SET_AUDITED_ALL_ITEMS",
+  SET_IS_SELECT_ALL = "SET_IS_SELECT_ALL",
 }
 
 type Action = {
   type: ActionType;
-  cateringId?: string;
+  cateringId?: string | null;
   inventories?: Inventory[];
   amount?: number;
   materialId?: string;
-  isAudited?: boolean;
+  isSelect?: boolean;
   memo?: string;
 };
 
 const defaultState: State = {
-  updated: false,
   currents: {},
-  updates: {},
-  key: Date.now(),
-  isAuditedAllItems: false,
+  amounts: {},
+  updated: false,
+  cateringId: null,
+  key: new Date().getTime(),
+  isSelectAll: false,
   selectedItemsCount: 0,
 };
 
@@ -54,6 +56,9 @@ const { dispatch, ...store } = createStore<State, Action>(reducer, {
 
 export default {
   ...store,
+  reset() {
+    dispatch({ type: ActionType.RESET });
+  },
   async setCateringId(cateringId: string) {
     const inventories = await getAllInventories(cateringId);
     dispatch({
@@ -62,55 +67,44 @@ export default {
       inventories,
     });
   },
-  reset() {
-    dispatch({ type: ActionType.RESET });
-  },
-  getSystemAmount(materialId: string) {
-    return store.getSnapshot().currents[materialId]?.amount || 0;
-  },
-  getAmount(materialId: string) {
+  getIsSelect(materialId: string) {
     const state = store.getSnapshot();
-    return state.updates[materialId] !== undefined
-      ? state.updates[materialId]?.amount
-      : state.currents[materialId]?.amount;
+    return state.currents[materialId]?.others.isAudited || false;
   },
   getAmountAfterAudit(materialId: string) {
-    return (
-      store.getSnapshot().currents[materialId]?.others
-        .amountAfterAudit || 0
-    );
+    const state = store.getSnapshot();
+    return state.currents[materialId]?.others.amountAfterAudit || 0;
   },
   getAmountShippedAfterAudit(materialId: string) {
+    const state = store.getSnapshot();
     return (
-      store.getSnapshot().currents[materialId]?.others
-        .amountShippedAfterAudit || 0
+      state.currents[materialId]?.others.amountShippedAfterAudit || 0
     );
   },
   getAmountReceivedAfterAudit(materialId: string) {
+    const state = store.getSnapshot();
     return (
-      store.getSnapshot().currents[materialId]?.others
-        .amountReceivedAfterAudit || 0
+      state.currents[materialId]?.others.amountReceivedAfterAudit || 0
     );
   },
-  getMemo(materialId: string) {
-    return (
-      store.getSnapshot().currents[materialId]?.others.memo || ""
-    );
+  getSystemAmount(materialId: string) {
+    const state = store.getSnapshot();
+    return state.currents[materialId]?.amount || 0;
+  },
+  getAmount(materialId: string) {
+    const state = store.getSnapshot();
+    return state.amounts[materialId] || 0;
   },
   getDifference(materialId: string) {
     const state = store.getSnapshot();
-    return state.updates[materialId] !== undefined
-      ? state.currents[materialId]?.amount -
-          state.updates[materialId]?.amount
-      : 0;
-  },
-  getIsAudited(materialId: string) {
-    const state = store.getSnapshot();
     return (
-      state.currents[materialId]?.others.isAudited ||
-      state.updates[materialId]?.others.isAudited ||
-      false
+      state.amounts[materialId] -
+        state.currents[materialId]?.amount || 0
     );
+  },
+  getMemo(materialId: string) {
+    const state = store.getSnapshot();
+    return state.currents[materialId]?.others.memo || "";
   },
   setAmount(materialId: string, amount: number) {
     dispatch({ type: ActionType.SET_AMOUNT, materialId, amount });
@@ -118,30 +112,29 @@ export default {
   setMemo(materialId: string, memo: string) {
     dispatch({ type: ActionType.SET_MEMO, materialId, memo });
   },
-  setIsAudited(materialId: string, isAudited: boolean) {
+  setIsSelect(materialId: string, isSelect: boolean) {
     dispatch({
-      type: ActionType.SET_IS_AUDITED,
+      type: ActionType.SET_IS_SELECTED,
       materialId,
-      isAudited,
+      isSelect,
     });
   },
-  setAuditedAllItems(isAudited: boolean) {
-    dispatch({
-      type: ActionType.SET_AUDITED_ALL_ITEMS,
-      isAudited,
-    });
+  setIsSelectAll(isSelect: boolean) {
+    dispatch({ type: ActionType.SET_IS_SELECT_ALL, isSelect });
   },
   async save() {
+    const state = store.getSnapshot();
     const { materials } = useMaterialStore.getState();
     await updateInventory(
-      Object.values(store.getSnapshot().updates).map((e) => {
+      Object.values(state.currents).map((e) => {
         const material = materials.get(e.materialId);
         const isAudited = e.others.isAudited || false;
+        const amount = state.amounts[e.materialId] || 0;
         return {
           ...e,
           amount: convertAmountForward({
             material,
-            amount: e.amount,
+            amount,
           }),
           others: {
             ...e.others,
@@ -170,189 +163,113 @@ export default {
 
 function reducer(action: Action, state: State): State {
   const { materials } = useMaterialStore.getState();
-  let updates: Record<string, Inventory> = {};
   switch (action.type) {
     case ActionType.RESET:
       return { ...defaultState };
     case ActionType.SET_INVENTORY:
       if (action.cateringId && action.inventories) {
+        const currents = initInventories(
+          action.inventories,
+          materials,
+        );
+        const amounts = Object.fromEntries(
+          Object.keys(currents).map((materialId) => {
+            const inventory = currents[materialId];
+            return [materialId, inventory.amount];
+          }),
+        );
         return {
           ...state,
           cateringId: action.cateringId,
-          currents: Object.fromEntries(
-            action.inventories.map((inventory) => {
-              const material = materials.get(inventory.materialId);
-              return [
-                inventory.materialId,
-                {
-                  ...inventory,
-                  amount: convertAmountBackward({
-                    material,
-                    amount: inventory.amount,
-                  }),
-                  others: {
-                    ...inventory.others,
-                    amountAfterAudit: convertAmountBackward({
-                      material,
-                      amount: inventory.others.amountAfterAudit,
-                    }),
-                    amountShippedAfterAudit: convertAmountBackward({
-                      material,
-                      amount:
-                        inventory.others.amountShippedAfterAudit,
-                    }),
-                    amountReceivedAfterAudit: convertAmountBackward({
-                      material,
-                      amount:
-                        inventory.others.amountReceivedAfterAudit,
-                    }),
-                  },
-                },
-              ];
-            }),
-          ),
+          currents,
+          amounts,
           key: Date.now(),
         };
       }
       break;
     case ActionType.SET_AMOUNT:
-      if (state.cateringId && action.amount && action.materialId) {
-        if (state.updates[action.materialId]) {
-          updates = {
-            ...state.updates,
-            [action.materialId]: {
-              ...state.updates[action.materialId],
-              amount: action.amount || 0,
-            },
-          };
-        }
-        if (state.currents[action.materialId]) {
-          updates = {
-            ...state.updates,
-            [action.materialId]: {
-              ...state.currents[action.materialId],
-              amount: action.amount || 0,
-            },
-          };
-        }
+      if (action.materialId && action.amount) {
+        state.amounts[action.materialId] = action.amount;
         return {
           ...state,
-          updates,
           updated: true,
-          key: Date.now(),
-        };
-      }
-      break;
-    case ActionType.SET_IS_AUDITED:
-      if (action.materialId && action.isAudited !== undefined) {
-        if (state.updates[action.materialId]) {
-          updates = {
-            ...state.updates,
-            [action.materialId]: {
-              ...state.updates[action.materialId],
-              others: {
-                ...state.updates[action.materialId].others,
-                isAudited: action.isAudited,
-              },
-            },
-          };
-        }
-        if (state.currents[action.materialId]) {
-          updates = {
-            ...state.updates,
-            [action.materialId]: {
-              ...state.currents[action.materialId],
-              others: {
-                ...state.currents[action.materialId].others,
-                isAudited: action.isAudited,
-              },
-            },
-          };
-        }
-        const selectedItemsCount = action.isAudited
-          ? state.selectedItemsCount + 1
-          : state.selectedItemsCount - 1;
-        return {
-          ...state,
-          updates,
-          updated: true,
-          selectedItemsCount,
-          isAuditedAllItems:
-            selectedItemsCount === Object.keys(state.currents).length,
           key: Date.now(),
         };
       }
       break;
     case ActionType.SET_MEMO:
       if (action.materialId && action.memo) {
-        if (state.updates[action.materialId]) {
-          updates = {
-            ...state.updates,
-            [action.materialId]: {
-              ...state.updates[action.materialId],
-              others: {
-                ...state.updates[action.materialId].others,
-                memo: action.memo,
-              },
-            },
-          };
-        }
-        if (state.currents[action.materialId]) {
-          updates = {
-            ...state.updates,
-            [action.materialId]: {
-              ...state.currents[action.materialId],
-              others: {
-                ...state.currents[action.materialId].others,
-                memo: action.memo,
-              },
-            },
-          };
-        }
-        return { ...state, updates, updated: true };
+        state.currents[action.materialId].others.memo = action.memo;
+        return {
+          ...state,
+          updated: true,
+        };
       }
       break;
-    case ActionType.SET_AUDITED_ALL_ITEMS:
-      if (action.isAudited !== undefined) {
-        let updates = { ...state.updates };
+    case ActionType.SET_IS_SELECTED:
+      if (action.materialId && action.isSelect !== undefined) {
+        state.currents[action.materialId].others.isAudited =
+          action.isSelect;
+        const selectedItemsCount = action.isSelect
+          ? state.selectedItemsCount + 1
+          : state.selectedItemsCount - 1;
+        return {
+          ...state,
+          selectedItemsCount,
+          updated: true,
+        };
+      }
+      break;
+    case ActionType.SET_IS_SELECT_ALL:
+      if (action.isSelect !== undefined) {
         Object.keys(state.currents).forEach((materialId) => {
-          if (state.updates[materialId]) {
-            updates = {
-              ...updates,
-              [materialId]: {
-                ...state.updates[materialId],
-                others: {
-                  ...state.updates[materialId].others,
-                  isAudited: action.isAudited || false,
-                },
-              },
-            };
-          }
-          if (state.currents[materialId]) {
-            updates = {
-              ...updates,
-              [materialId]: {
-                ...state.currents[materialId],
-                others: {
-                  ...state.currents[materialId].others,
-                  isAudited: action.isAudited || false,
-                },
-              },
-            };
-          }
+          state.currents[materialId].others.isAudited =
+            action.isSelect || false;
         });
         return {
           ...state,
-          updates,
-          updated: true,
-          key: Date.now(),
-          isAuditedAllItems: action.isAudited,
-          selectedItemsCount: action.isAudited
+          isSelectAll: action.isSelect,
+          selectedItemsCount: action.isSelect
             ? Object.keys(state.currents).length
             : 0,
+          updated: true,
+          key: Date.now(),
         };
       }
       break;
   }
   return state;
+}
+
+function initInventories(
+  inventories: Inventory[],
+  materials: Map<string, Material>,
+) {
+  const currents: Record<string, Inventory> = {};
+  inventories.forEach((inventory) => {
+    const material = materials.get(inventory.materialId);
+    currents[inventory.materialId] = {
+      ...inventory,
+      amount: convertAmountBackward({
+        material,
+        amount: inventory.amount,
+      }),
+      others: {
+        ...inventory.others,
+        amountAfterAudit: convertAmountBackward({
+          material,
+          amount: inventory.others.amountAfterAudit,
+        }),
+        amountShippedAfterAudit: convertAmountBackward({
+          material,
+          amount: inventory.others.amountShippedAfterAudit,
+        }),
+        amountReceivedAfterAudit: convertAmountBackward({
+          material,
+          amount: inventory.others.amountReceivedAfterAudit,
+        }),
+      },
+    };
+  });
+  return currents;
 }

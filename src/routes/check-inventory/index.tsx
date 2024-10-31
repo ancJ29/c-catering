@@ -35,14 +35,14 @@ const CheckInventory = () => {
   const { departmentNameById } = useMetaDataStore();
   const [cateringId, setCateringId] = useState("");
   const [caterings, setCaterings] = useState<Department[]>([]);
-  const { updated, key, isAuditedAllItems } = useSyncExternalStore(
+  const { updated, key, isSelectAll } = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
   );
 
   const dataGridConfigs = useMemo(
-    () => configs(t, isAuditedAllItems, store.setAuditedAllItems),
-    [isAuditedAllItems, t],
+    () => configs(t, isSelectAll),
+    [isSelectAll, t],
   );
 
   const dataLoader = useCallback(() => {
@@ -82,7 +82,6 @@ const CheckInventory = () => {
       } else if (departmentNameById.has(cateringId)) {
         setCateringId(cateringId);
         store.setCateringId(cateringId);
-        // .then(() => setKey(Date.now()));
       }
     },
     [departmentNameById],
