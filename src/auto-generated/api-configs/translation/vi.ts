@@ -533,4 +533,5 @@ export default {
     "Vui lòng sao chép và lưu mật khẩu trước khi cập nhật mật khẩu",
   "Random password": "Mật khẩu ngẫu nhiên",
   "The passwords did not match": "Mật khẩu không khớp",
+  "Update": "Cập nhật",
 } satisfies Record<string, string>;

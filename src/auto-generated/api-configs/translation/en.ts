@@ -533,4 +533,5 @@ export default {
     "Please copy and keep password safe before update password",
   "Random password": "Random password",
   "The passwords did not match": "The passwords did not match",
+  "Update": "Update",
 } satisfies Record<string, string>;

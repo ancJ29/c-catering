@@ -114,7 +114,6 @@ const QuotationManagement = () => {
     filter,
     defaultCondition,
   });
-
   return (
     <Stack key={suppliers.size} gap={10}>
       <Filter
